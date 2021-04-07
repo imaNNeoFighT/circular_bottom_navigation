@@ -20,6 +20,7 @@ class CircularBottomNavigation extends StatefulWidget {
   final Duration animationDuration;
   final CircularBottomNavSelectedCallback selectedCallback;
   final CircularBottomNavigationController controller;
+  final CircularBottomBadgeController badgeController;
 
   CircularBottomNavigation(this.tabItems,
       {this.selectedPos = 0,
@@ -32,7 +33,8 @@ class CircularBottomNavigation extends StatefulWidget {
         this.normalIconColor = Colors.grey,
         this.animationDuration = const Duration(milliseconds: 300),
         this.selectedCallback,
-        this.controller})
+        this.controller,
+        this.badgeController})
       : assert(tabItems != null && tabItems.length != 0, "tabItems is required");
 
   @override
@@ -44,15 +46,19 @@ class _CircularBottomNavigationState extends State<CircularBottomNavigation>
   Curve _animationsCurve = Cubic(0.27, 1.21, .77, 1.09);
 
   AnimationController itemsController;
+  AnimationController badgeController;
   Animation<double> selectedPosAnimation;
   Animation<double> itemsAnimation;
+  Animation<double> badgeAnimation;
 
   List<double> _itemsSelectedState;
 
   int selectedPos;
   int previousSelectedPos;
+  Map<int , dynamic> badgeItems = {};
 
   CircularBottomNavigationController _controller;
+  CircularBottomBadgeController _badgeController;
 
   @override
   void initState() {
@@ -64,14 +70,21 @@ class _CircularBottomNavigationState extends State<CircularBottomNavigation>
       previousSelectedPos = selectedPos = widget.selectedPos;
       _controller = CircularBottomNavigationController(selectedPos);
     }
+    if (widget.badgeController != null) {
+      _badgeController = widget.badgeController;
+    } else {
+      _badgeController = CircularBottomBadgeController([0,0]);
+    }
 
     _controller.addListener(_newSelectedPosNotify);
+    _badgeController.addListener(_newBadgeValueNotify);
 
     _itemsSelectedState = List.generate(widget.tabItems.length, (index) {
       return selectedPos == index ? 1.0 : 0.0;
     });
 
     itemsController = new AnimationController(vsync: this, duration: widget.animationDuration);
+    badgeController = new AnimationController(vsync: this, duration: widget.animationDuration);
     itemsController.addListener(() {
       setState(() {
         _itemsSelectedState.asMap().forEach((i, value) {
@@ -85,17 +98,30 @@ class _CircularBottomNavigationState extends State<CircularBottomNavigation>
         });
       });
     });
+    badgeController.addListener(() {
+      setState(() {
+
+      });
+    });
 
     selectedPosAnimation =
         makeSelectedPosAnimation(selectedPos.toDouble(), selectedPos.toDouble());
 
     itemsAnimation = Tween(begin: 0.0, end: 1.0)
         .animate(CurvedAnimation(parent: itemsController, curve: _animationsCurve));
+
+    badgeAnimation = Tween(begin: 0.0, end: 1.0)
+        .animate(CurvedAnimation(parent: badgeController, curve: _animationsCurve));
   }
 
   Animation<double> makeSelectedPosAnimation(double begin, double end) {
     return Tween(begin: begin, end: end)
         .animate(CurvedAnimation(parent: itemsController, curve: _animationsCurve));
+  }
+
+  Animation<double> makeBadgeAnimation(double begin, double end) {
+    return Tween(begin: begin, end: end)
+        .animate(CurvedAnimation(parent: badgeController, curve: _animationsCurve));
   }
 
   void onSelectedPosAnimate() {
@@ -104,6 +130,10 @@ class _CircularBottomNavigationState extends State<CircularBottomNavigation>
 
   void _newSelectedPosNotify() {
     _setSelectedPos(widget.controller.value);
+  }
+
+  void _newBadgeValueNotify() {
+    _setBadgeValue(widget.badgeController.value);
   }
 
   @override
@@ -235,6 +265,37 @@ class _CircularBottomNavigationState extends State<CircularBottomNavigation>
           ),
           rect: r,
         ));
+        children.add(
+            widget.tabItems[pos].badgeNumber != null && widget.tabItems[pos].badgeNumber != 0 && widget.tabItems[pos].badgeNumber != "0" && widget.tabItems[pos].badgeNumber != "۰"
+                ? Positioned(
+              child: Transform.scale(
+                scale: scaleFactor,
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(
+                    minHeight: badgeItems[pos] != widget.tabItems[pos].badgeNumber ? badgeAnimation.value * 20 : 20,
+                    minWidth: badgeItems[pos] != widget.tabItems[pos].badgeNumber ? badgeAnimation.value * 20 : 20,
+                  ),
+                  child: Container(
+                    height: badgeItems[pos] != widget.tabItems[pos].badgeNumber ? badgeAnimation.value * 20 : 20,
+                    decoration: BoxDecoration(
+                        color: widget.tabItems[pos].badgeColor,
+                        borderRadius: BorderRadius.all(Radius.circular(10))
+                    ),
+                    child: Center(
+                        child: Padding(
+                          padding: EdgeInsets.only(left: 4,right: 4),
+                          child: Text(widget.tabItems[pos].badgeNumber,style: TextStyle(fontSize: 12,color: Colors.white),),
+                        )
+                    ),
+                  ),
+                ),
+              ),
+              left: r.center.dx - (widget.iconsSize / 2) - 10,
+              top: r.center.dy -
+                  (widget.iconsSize / 2) -
+                  (_itemsSelectedState[pos] * ((widget.barHeight / 2) + widget.circleStrokeWidth)) - 10,
+            ) : SizedBox()
+        );
       }
     });
 
@@ -258,10 +319,32 @@ class _CircularBottomNavigationState extends State<CircularBottomNavigation>
     }
   }
 
+  void _setBadgeValue(List value) {
+    int index = value[0];
+    var newValue = value[1];
+    if(widget.tabItems[index].badgeNumber != newValue.toString()){
+      setState(() {
+        widget.tabItems[index].badgeNumber = newValue.toString();
+        Future.delayed(Duration(milliseconds: 100),(){
+          if(badgeItems[index] == null){
+            badgeItems[index] = newValue.toString();
+          } else {
+            if(badgeItems[index] != widget.tabItems[index].badgeNumber) {
+              badgeItems[index] = newValue.toString();
+            }
+          }
+        });
+      });
+      badgeController.forward(from: 0.0);
+      badgeAnimation = makeBadgeAnimation(0.0, 1.0);
+    }
+  }
+
   @override
   void dispose() {
     super.dispose();
     itemsController.dispose();
+    badgeController.dispose();
     _controller.removeListener(_newSelectedPosNotify);
   }
 
@@ -269,4 +352,8 @@ class _CircularBottomNavigationState extends State<CircularBottomNavigation>
 
 class CircularBottomNavigationController extends ValueNotifier<int> {
   CircularBottomNavigationController(int value) : super(value);
+}
+
+class CircularBottomBadgeController extends ValueNotifier<List> {
+  CircularBottomBadgeController(List value) : super(value);
 }
